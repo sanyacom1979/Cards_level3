@@ -26,9 +26,8 @@ async def cards_requests() -> dict:
 	async with ClientSession() as session:
 		url = "http://127.0.0.1:8080/cards_api/_service_route/cards"
 		async with session.get(url=url, params={"card_value": card["value"], "card_suit": card["suit"]}) as resp:
-			try:
-				card_from_bd = await resp.json()
-			except:	
+			card_from_bd = await resp.json()
+			if card_from_bd == {'detail': 'Card not found'}:
 				async with ClientSession() as session:
 					async with session.post(url=url, json={"value": card["value"], "suit": card["suit"], "count": 1}) as resp:
 						await resp.json()

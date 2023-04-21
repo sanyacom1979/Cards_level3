@@ -13,7 +13,10 @@ class DbCards(DbBase):
     async def get(self, session: AsyncSession, card_value: str, card_suit: str):
         q = select(self.data_model).where((self.data_model.value == card_value) & (self.data_model.suit == card_suit))
         res = await session.execute(q)
-        return res.first()[0]
+        try:
+            return res.first()[0]
+        except:
+            return None
 
 
     async def update(self, session: AsyncSession, card_value: str, card_suit: str, upd_data: dict):
