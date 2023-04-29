@@ -23,7 +23,7 @@
 Для установки **Cards_level3** необходимо выполнить следующую команду
 
 ```console
-$ https://github.com/sanyacom1979/Cards_level3.git
+$ git clone https://github.com/sanyacom1979/Cards_level3.git
 ```
 
 Для корректной работы Вам понадобится установка следующих библиотек: **aiohttp, alembic, anyio, asyncpg, fastapi, psycopg2, pydantic, SQLAlchemy, typing-extensions, uvicorn**.
