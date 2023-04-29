@@ -39,9 +39,9 @@ $ pip install fastapi
 
 Реализовано 5 роутов FastAPI:
 
-1. **...localhost../ext_api/draw_cards/**  -  (get) роут для работы с внешней API (https://deckofcardsapi.com/) 
-2. **...localhost../cards_api/cards/**     - (get) роут для получения информации о количесте выпаданий запрошенной карты из БД 
-3. **...localhost.../cards_api/__service_route/cards** - (get, post, put) сервисные роуты для связи внешней API c БД 
+1. **http://127.0.0.1:8080/ext_api/draw_cards/**  -  (get) роут для работы с внешней API (https://deckofcardsapi.com/) 
+2. **http://127.0.0.1:8080/cards_api/cards/**     - (get) роут для получения информации о количесте выпаданий запрошенной карты из БД 
+3. **http://127.0.0.1:8080/cards_api/_service_route/cards** - (get, post, put) сервисные роуты для связи внешней API c БД 
 
 Роут 1. получает получает карту с внешней API и с помощью роутов 3. проверяет карту в БД и, в зависимости от результата, добавляет и карту в БД или обновляет количество выпаданий карты. 
 
