@@ -1,5 +1,13 @@
+"""
+Модуль моделей для БД
+"""
+
 from sqlalchemy import Column, Integer, String
-from .base import Base
+from sqlalchemy.orm import DeclarativeBase
+
+
+class Base(DeclarativeBase):
+    ...
 
 
 class Card(Base):
@@ -9,3 +17,7 @@ class Card(Base):
     value = Column(String, nullable=False)
     suit = Column(String, nullable=False)
     count = Column(Integer, nullable=False)
+
+
+    async def to_dict(self):
+        return {"value": self.value, "suit": self.suit, "count": self.count}

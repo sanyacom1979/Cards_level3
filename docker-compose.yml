@@ -1,8 +1,27 @@
 version: "3"
 services:
   web:
+    restart: 'on-failure'
     build: .
-    volumes:
-      - .:/app
+    command: bash -c "python for_alembic_in_docker.py && python cards_async/main.py"
+    environment:
+      - DB_LOGIN=admin
+      - DB_PASSWORD=admin
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_DATABASE=cards
     ports:
       - 8080:8080
+    depends_on:
+      - db
+  db:
+    image: postgres:15.2
+    expose:
+      - 5432
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+      - POSTGRES_DB=cards
+      - POSTGRES_HOST=db
+    ports:
+      - 5432:5432

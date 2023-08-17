@@ -1,4 +1,3 @@
-FROM python:3.8-slim
-COPY . app/
-RUN pip install -r app/requirements.txt
-CMD ["python", "app/cards/main.py"]
+FROM python:3.8.9-slim
+COPY . .
+RUN pip install -r requirements.txt

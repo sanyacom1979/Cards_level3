@@ -26,7 +26,7 @@
 $ git clone https://github.com/sanyacom1979/Cards_level3.git
 ```
 
-Для корректной работы Вам понадобится установка следующих библиотек: **aiohttp, alembic, anyio, asyncpg, fastapi, psycopg2, pydantic, SQLAlchemy, typing-extensions, uvicorn**.
+Для корректной работы Вам понадобится установка следующих библиотек: **aiohttp, alembic, anyio, asyncpg, fastapi, pydantic, SQLAlchemy, typing-extensions, environs, uvicorn**.
 
 Установить библиотеки можно из консоли
 
@@ -51,8 +51,8 @@ $ pip install fastapi
 
 ```python
 @router.get("/draw_cards", response_model=CardResponse)
-async def draw_cards() -> CardResponse:           
-    return await cards_requests()
+async def draw_cards(ext_api_service: ExtAPIService = Depends(ext_api_service_dependency)) -> CardResponse:           
+    return await ext_api_service()
 ```
 
 ### Pydantic
@@ -90,31 +90,54 @@ card_service: CardService=Depends(card_service_dependency)
 ```
 ```python
 
-def db_dependency() -> DbCards: 
-	return DbCards()
+def db_config_dependency() -> DatabaseConfig:
+    return DatabaseConfig()
+
+
+def db_base_dependency(
+    db_config: DatabaseConfig = Depends(db_config_dependency)
+    ) -> Database:
+    return Database(f"postgresql+asyncpg://{db_config.login}:{db_config.password}@{db_config.host}:{db_config.port}/{db_config.database}")
+
+
+def db_dependency(
+    db_base: Database = Depends(db_base_dependency)
+    ) -> DbCards: 
+    return DbCards(db_base.get_session)
 
 
 def card_service_dependency(
-	db: DbCards = Depends(db_dependency)
+    db: DbCards = Depends(db_dependency)
 ) -> CardService:
-	
-	return CardService(db)
+    
+    return CardService(db)
 
 ```
 
 ### SQLAlchemy
 
 ```python
-db_url = f"postgresql+asyncpg://{config.login}:{config.password}@{config.host}:{config.port}/{config.database}"
-engine = create_async_engine(db_url)
-async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+class Database:
+
+    def __init__(self, db_url: str) -> None:
+        self.db_url = db_url 
+        self._engine = create_async_engine(self.db_url)
+        self._async_session = sessionmaker(bind=self._engine, expire_on_commit=False, class_=AsyncSession)
 
 
-class Base(DeclarativeBase):
+    @asynccontextmanager
+    async def get_session(self) -> AsyncSession:
+        session = self._async_session()
+        yield session
+        await session.close()
     ...
 ```
 
 ```python
+class Base(DeclarativeBase):
+    ...
+
+
 class Card(Base):
     __tablename__ = "cards"
 
@@ -122,6 +145,10 @@ class Card(Base):
     value = Column(String, nullable=False)
     suit = Column(String, nullable=False)
     count = Column(Integer, nullable=False)
+
+
+    async def to_dict(self):
+        return {"value": self.value, "suit": self.suit, "count": self.count}
 
 ```
 
@@ -131,19 +158,60 @@ class DbBase():
     data_model = None
 
     
-    async def add(self, session: AsyncSession, data: dict):
-        to_add = self.data_model(**data)
-        session.add(to_add)
-        await session.commit()
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
 
 
+    async def add(self, data: dict) -> Any:
+        async with self.session() as session:
+            async with session.begin():
+                to_add = self.data_model(**data)
+                session.add(to_add)
+                await session.commit()
+                return to_add
 
-    async def get(self, session: AsyncSession, filt: str):
-       ...
 
     
-    async def update(self, session: AsyncSession, filt: str, upd_data: dict):
-        ...
+    async def get(self, card_cond: str) -> Any:     
+        async with self.session() as session:
+            async with session.begin():
+                q = select(self.data_model).where(await self._conv_where(card_cond))
+                res = await session.execute(q)
+                try:
+                    return res.first()[0]
+                except:
+                    return None
+
+
+    async def update(self, card_cond: str, upd_data: dict) -> Any:   
+        async with self.session() as session:
+            async with session.begin():
+                q = (
+                    sqlalchemy_update(self.data_model)
+                    .where(await self._conv_where(card_cond))
+                    .values(upd_data)
+                    .execution_options(synchronize_session="fetch")
+                    .returning(self.data_model)
+                )
+                res = await session.execute(q)
+                await session.commit()
+                try:
+                    return res.first()[0]
+                except:
+                    return None
+
+
+    async def delete(self, card_cond: str) -> None:
+        async with self.session() as session:
+            async with session.begin():
+                q = select(self.data_model).where(await self._conv_where(card_cond))
+                res = await session.execute(q)
+                try:
+                    to_delete = res.first()[0]
+                    await session.delete(to_delete)
+                    await session.commit()
+                except:
+                    ...
 ```
 
 ```python
@@ -151,34 +219,134 @@ class DbCards(DbBase):
     
     data_model = Card
 
-    async def get(self, session: AsyncSession, card_value: str, card_suit: str):
-        q = select(self.data_model).where((self.data_model.value == card_value) & (self.data_model.suit == card_suit))
-        res = await session.execute(q)
-        try:
-            return res.first()[0]
-        except:
-            return None
-
-
-    async def update(self, session: AsyncSession, card_value: str, card_suit: str, upd_data: dict):
-        q = (
-            sqlalchemy_update(self.data_model)
-            .where((self.data_model.value == card_value) & (self.data_model.suit == card_suit))
-            .values(upd_data)
-            .execution_options(synchronize_session="fetch")
-        )
-        await session.execute(q)
-        await session.commit()
 ```
 
 ### AioHTTP
 
 ```python
-async with ClientSession() as session:
-		url = f"https://deckofcardsapi.com/api/deck/{deck_cache['deck_id']}/draw/?count=1"
-		async with session.get(url=url) as resp:
-			res = await resp.json()
-			card = res["cards"][0]
+class SessionControl:
+
+    @asynccontextmanager
+    async def get_session(self) -> ClientSession:
+        session = ClientSession()
+        yield session
+        await session.close()
+
+
+class SessionRequests:
+
+    def __init__(self, session: ClientSession) -> None:
+        self.session = session
+
+
+    async def get_url(self, url: str) -> dict:       
+        async with self.session() as session: 
+            async with session.get(url) as response:
+                if response.status == 200: 
+                    json_result = await response.json()
+                    return {"status": 200, "json": json_result, "msg": None}
+                elif response.status == 404:
+                    return {"status": 404, "json": None, "msg": "Not found"}
+                else:
+                    return {"status": response.status, "json": None, "msg": await response.text()}
+        
+
+    async def get_url_params(self, url: str, params: dict) -> dict:
+        async with self.session() as session:
+            async with session.get(url, params=params) as response:
+                if response.status == 200: 
+                    json_result = await response.json()
+                    return {"status": 200, "json": json_result, "msg": None}
+                elif response.status == 404:
+                    return {"status": 404, "json": None, "msg": "Not found"}
+                else:
+                    return {"status": response.status, "json": None, "msg": await response.text()}
+
+
+    async def post_url(self, url: str, json: dict) -> dict:
+        async with self.session() as session:
+            async with session.post(url, json=json) as response:      
+                if response.status == 200: 
+                    json_result = await response.json()
+                    return {"status": 200, "json": json_result, "msg": None}
+                else:
+                    return {"status": response.status, "json": None, "msg": await response.text()}
+
+
+    async def put_url(self, url: str, params: dict) -> dict:
+        async with self.session() as session:        
+            async with session.put(url, params=params) as response:
+                if response.status == 200: 
+                    json_result = await response.json()
+                    return {"status": 200, "json": json_result, "msg": None}
+                elif response.status == 404:
+                    return {"status": 404, "json": None, "msg": "Not found"}
+                else:
+                    return {"status": response.status, "json": None, "msg": await response.text()}
+        
+```
+
+```python
+class SessionControl:
+
+    @asynccontextmanager
+    async def get_session(self) -> ClientSession:
+        session = ClientSession()
+        yield session
+        await session.close()
+
+
+class SessionRequests:
+
+    def __init__(self, session: ClientSession) -> None:
+        self.session = session
+
+
+    async def get_url(self, url: str) -> dict:       
+        async with self.session() as session: 
+            async with session.get(url) as response:
+                if response.status == 200: 
+                    json_result = await response.json()
+                    return {"status": 200, "json": json_result, "msg": None}
+                elif response.status == 404:
+                    return {"status": 404, "json": None, "msg": "Not found"}
+                else:
+                    return {"status": response.status, "json": None, "msg": await response.text()}
+        
+
+    async def get_url_params(self, url: str, params: dict) -> dict:
+        async with self.session() as session:
+            async with session.get(url, params=params) as response:
+                if response.status == 200: 
+                    json_result = await response.json()
+                    return {"status": 200, "json": json_result, "msg": None}
+                elif response.status == 404:
+                    return {"status": 404, "json": None, "msg": "Not found"}
+                else:
+                    return {"status": response.status, "json": None, "msg": await response.text()}
+
+
+    async def post_url(self, url: str, json: dict) -> dict:
+        async with self.session() as session:
+            async with session.post(url, json=json) as response:      
+                if response.status == 200: 
+                    json_result = await response.json()
+                    return {"status": 200, "json": json_result, "msg": None}
+                else:
+                    return {"status": response.status, "json": None, "msg": await response.text()}
+
+
+    async def put_url(self, url: str, params: dict) -> dict:
+        async with self.session() as session:        
+            async with session.put(url, params=params) as response:
+                if response.status == 200: 
+                    json_result = await response.json()
+                    return {"status": 200, "json": json_result, "msg": None}
+                elif response.status == 404:
+                    return {"status": 404, "json": None, "msg": "Not found"}
+                else:
+                    return {"status": response.status, "json": None, "msg": await response.text()}
+        
 ```
 
 ## Авторы
