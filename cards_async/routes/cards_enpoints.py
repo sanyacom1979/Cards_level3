@@ -47,7 +47,7 @@ async def get_card_count(card_value: str,
     return res
 
 
-@router.get("/_service_route/cards", response_model=CardCountResponse)
+@router.get("/_service_route/cards", response_model=CardCountResponse, include_in_schema=False)
 async def get_card(card_value: str,
     card_suit: str, 
     card_service: CardService=Depends(card_service_dependency),
@@ -60,7 +60,7 @@ async def get_card(card_value: str,
     return res
 
 
-@router.post("/_service_route/cards")
+@router.post("/_service_route/cards", response_model=CardCountResponse, include_in_schema=False)
 async def add_card(card_item: BodyToAddCard, 
     card_service: CardService=Depends(card_service_dependency),
 ) -> CardCountResponse:
@@ -74,7 +74,7 @@ async def add_card(card_item: BodyToAddCard,
     return res
 
 
-@router.put("/_service_route/cards")
+@router.put("/_service_route/cards", response_model=CardCountResponse, include_in_schema=False)
 async def update_card_count(card_value: str,
     card_suit: str,
     card_count: int, 
