@@ -2,6 +2,7 @@
 Для создания таблиц в докер-контейнере
 """
 
+
 import alembic
 from alembic.config import Config
 
